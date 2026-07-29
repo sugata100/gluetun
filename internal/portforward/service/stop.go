@@ -58,6 +58,7 @@ func (s *Service) cleanup() (err error) {
 
 	s.ports = nil
 
+	s.logger.Debug("writePortForwardedFile in cleanup")
 	err = s.writePortForwardedFile(nil)
 	if err != nil {
 		return fmt.Errorf("clearing port file: %w", err)

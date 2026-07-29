@@ -99,6 +99,7 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		case partialUpdate := <-updateTrigger:
 			updatedSettings, err := l.settings.updateWith(partialUpdate, *l.settings.VPNIsUp)
 			if err != nil {
+				l.logger.Debug(fmt.Sprintf("port forward loop: run: updateWith error %v", err))
 				updateResult <- err
 				continue
 			}
@@ -136,6 +137,7 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			if err != nil {
 				err = fmt.Errorf("starting port forwarding service: %w", err)
 			}
+			l.logger.Debug(fmt.Sprintf("port forward loop: Start: error is %v", err))
 			updateResult <- err
 		} else if err != nil {
 			// Log the error and schedule a retry
@@ -150,6 +152,7 @@ func (l *Loop) UpdateWith(partialUpdate Settings) (err error) {
 	case l.updateTrigger <- partialUpdate:
 		select {
 		case err = <-l.updatedResult:
+			l.logger.Debug(fmt.Sprintf("port forward loop: UpdateWith: received error %v", err))
 			return err
 		case <-l.runCtx.Done():
 			return l.runCtx.Err()

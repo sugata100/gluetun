@@ -34,7 +34,9 @@ func (l *Loop) startPortForwarding(data tunnelUpData) (err error) {
 			Password:       data.password,
 		},
 	}
-	return l.portForward.UpdateWith(partialUpdate)
+	err = l.portForward.UpdateWith(partialUpdate)
+	l.logger.Debug(fmt.Sprintf("vpn loop: start port forwarding: error is %v", err))
+	return err
 }
 
 func (l *Loop) stopPortForwarding() (err error) {

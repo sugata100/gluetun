@@ -133,6 +133,20 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 		case <-timer.C:
 		}
 
+		_, externalIPv4Address, err := client.ExternalAddress(ctx, objects.Gateway)
+		if err != nil {
+			switch {
+			case strings.HasSuffix(err.Error(), "connection refused"):
+				err = fmt.Errorf("%w - make sure you have +pmp at the end of your OpenVPN username "+
+					"or that your Wireguard key is set to work with PMP", err)
+			case strings.Contains(err.Error(), "i/o timeout"):
+				err = fmt.Errorf("%w - make sure FIREWALL_OUTBOUND_SUBNETS does not conflict with "+
+					"the VPN gateway ip address %s", err, objects.Gateway)
+			}
+			logger.Error(fmt.Sprintf("getting external IPv4 address: %v", err))
+		}
+		logger.Debug("gateway external IPv4 address is " + externalIPv4Address.String())
+
 		objects.Logger.Debug("refreshing forwarded ports since 45 seconds have elapsed")
 		const lifetime = 60 * time.Second
 		for internalPort, externalPort := range p.internalToExternalPorts {

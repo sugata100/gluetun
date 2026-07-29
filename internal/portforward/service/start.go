@@ -123,7 +123,9 @@ func (s *Service) onNewPorts(ctx context.Context, internalToExternalPorts map[ui
 		}
 	}
 
+	s.logger.Debug(fmt.Sprintf("writePortForwardedFile with externalPorts: %v", externalPorts))
 	err = s.writePortForwardedFile(externalPorts)
+	s.logger.Debug(fmt.Sprintf("writing port file: error is %v", err))
 	if err != nil {
 		_ = s.cleanup()
 		return fmt.Errorf("writing port file: %w", err)
