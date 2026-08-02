@@ -63,13 +63,13 @@ func (c *Checker) SetConfig(tlsDialAddrs []string, icmpTargets []netip.Addr,
 // internal field startupOnFail, which is set by calling [Checker.SetConfig].
 //
 // By default, startupOnFail should be false and the behavior is as follows:
-// A blocking 6s-timed TCP+TLS check is performed first. If it fails,
+// A blocking timed TCP+TLS check is performed first. If it fails,
 // an error is returned and the [Checker] is not started.
 // On success, it starts the periodic checks in a separate goroutine, returning
 // the runError error channel and a nil error.
 //
 // If startupOnFail is true, the behavior is as follows:
-// A blocking 6s-timed TCP+TLS check is performed first. If it fails,
+// A blocking timed TCP+TLS check is performed first. If it fails,
 // the error is sent to the runError channel, but no error is returned
 // and the [Checker] continues to start the periodic checks in a separate goroutine, returning
 // the runError error channel and a nil error.
@@ -293,13 +293,12 @@ func withRetries(ctx context.Context, tryTimeouts []time.Duration,
 }
 
 func (c *Checker) startupCheck(ctx context.Context) error {
-	// connection isn't under load yet when the checker starts, so a short
-	// 6 seconds timeout suffices and provides quick enough feedback that
-	// the new connection is not working. However, since the addresses to dial
-	// may be multiple, we run the check in parallel. If any succeeds, the check passes.
-	// This is to prevent false negatives at startup, if one of the addresses is down
-	// for external reasons.
-	const timeout = 6 * time.Second
+	// Increased from 6s to 15s to reduce false-positive restart loops on slower
+	// VPN handshakes / DNS readiness (see https://github.com/passteque/gluetun/issues/2154).
+	// The addresses to dial may be multiple; we run the check in parallel.
+	// If any succeeds, the check passes. This prevents false negatives at startup
+	// if one of the addresses is temporarily unreachable.
+	const timeout = 15 * time.Second
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	errCh := make(chan error)
@@ -334,7 +333,7 @@ func (c *Checker) startupCheck(ctx context.Context) error {
 	for i, err := range errs {
 		errStrings[i] = fmt.Sprintf("parallel attempt %d/%d failed: %s", i+1, len(errs), err)
 	}
-	return fmt.Errorf("all check tries failed: %s", strings.Join(errStrings, ", "))
+	return fmt.Errorf("all check tries failed: %s (see https://github.com/qdm12/gluetun-wiki/blob/main/faq/healthcheck.md)", strings.Join(errStrings, ", "))
 }
 
 const (
