@@ -14,6 +14,11 @@ import (
 	"github.com/qdm12/gluetun/internal/healthcheck/icmp"
 )
 
+// defaultStartupTimeout is the default duration for the initial TCP+TLS
+// healthcheck after the VPN tunnel comes up. Raised from the historical 6s
+// to reduce false-positive restart loops on slower providers (see #2154).
+const defaultStartupTimeout = 15 * time.Second
+
 type Checker struct {
 	tlsDialAddrs    []string
 	dialer          *net.Dialer
@@ -60,7 +65,7 @@ func (c *Checker) SetConfig(tlsDialAddrs []string, icmpTargets []netip.Addr,
 	c.smallCheckType = smallCheckType
 	c.startupOnFail = startupOnFail
 	if startupTimeout <= 0 {
-		startupTimeout = 15 * time.Second
+		startupTimeout = defaultStartupTimeout
 	}
 	c.startupTimeout = startupTimeout
 }
@@ -305,7 +310,7 @@ func (c *Checker) startupCheck(ctx context.Context) error {
 	// Addresses are dialed in parallel; any success passes the check.
 	timeout := c.startupTimeout
 	if timeout <= 0 {
-		timeout = 15 * time.Second
+		timeout = defaultStartupTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -341,7 +346,9 @@ func (c *Checker) startupCheck(ctx context.Context) error {
 	for i, err := range errs {
 		errStrings[i] = fmt.Sprintf("parallel attempt %d/%d failed: %s", i+1, len(errs), err)
 	}
-	return fmt.Errorf("all check tries failed: %s (see https://github.com/qdm12/gluetun-wiki/blob/main/faq/healthcheck.md)", strings.Join(errStrings, ", "))
+	const faqURL = "https://github.com/qdm12/gluetun-wiki/blob/main/faq/healthcheck.md"
+	return fmt.Errorf("all check tries failed: %s (see %s)",
+		strings.Join(errStrings, ", "), faqURL)
 }
 
 const (
