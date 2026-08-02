@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"time"
 
 	"github.com/qdm12/gosettings"
 	"github.com/qdm12/gosettings/reader"
@@ -36,6 +37,12 @@ type Health struct {
 	// RestartVPN indicates whether to restart the VPN connection
 	// when the healthcheck fails.
 	RestartVPN *bool
+	// StartupTimeout is the maximum duration of the initial TCP+TLS
+	// healthcheck performed right after the VPN tunnel comes up.
+	// Defaults to 15s (increased from the historical 6s to reduce
+	// false-positive restart loops on slower providers; see #2154).
+	// Set via HEALTH_STARTUP_TIMEOUT.
+	StartupTimeout time.Duration
 }
 
 func (h Health) Validate() (err error) {
@@ -59,6 +66,10 @@ func (h Health) Validate() (err error) {
 		return fmt.Errorf("small check type is not valid: %w", err)
 	}
 
+	if h.StartupTimeout <= 0 {
+		return errors.New("startup timeout must be greater than 0")
+	}
+
 	return nil
 }
 
@@ -69,6 +80,7 @@ func (h *Health) copy() (copied Health) {
 		ICMPTargetIPs:   gosettings.CopySlice(h.ICMPTargetIPs),
 		SmallCheckType:  h.SmallCheckType,
 		RestartVPN:      gosettings.CopyPointer(h.RestartVPN),
+		StartupTimeout:  h.StartupTimeout,
 	}
 }
 
@@ -81,6 +93,7 @@ func (h *Health) OverrideWith(other Health) {
 	h.ICMPTargetIPs = gosettings.OverrideWithSlice(h.ICMPTargetIPs, other.ICMPTargetIPs)
 	h.SmallCheckType = gosettings.OverrideWithComparable(h.SmallCheckType, other.SmallCheckType)
 	h.RestartVPN = gosettings.OverrideWithPointer(h.RestartVPN, other.RestartVPN)
+	h.StartupTimeout = gosettings.OverrideWithComparable(h.StartupTimeout, other.StartupTimeout)
 }
 
 func (h *Health) SetDefaults() {
@@ -92,6 +105,9 @@ func (h *Health) SetDefaults() {
 	})
 	h.SmallCheckType = gosettings.DefaultComparable(h.SmallCheckType, "icmp")
 	h.RestartVPN = gosettings.DefaultPointer(h.RestartVPN, true)
+	// Default raised from historical 6s to 15s to reduce false restart loops
+	// on slower VPN providers (see https://github.com/passteque/gluetun/issues/2154).
+	h.StartupTimeout = gosettings.DefaultComparable(h.StartupTimeout, 15*time.Second)
 }
 
 func (h Health) String() string {
@@ -120,6 +136,7 @@ func (h Health) toLinesNode() (node *gotree.Node) {
 		node.Appendf("Small health check type: Plain DNS lookup over UDP")
 	}
 	node.Appendf("Restart VPN on healthcheck failure: %s", gosettings.BoolToYesNo(h.RestartVPN))
+	node.Appendf("Startup healthcheck timeout: %s", h.StartupTimeout)
 	return node
 }
 
@@ -135,6 +152,13 @@ func (h *Health) Read(r *reader.Reader) (err error) {
 	h.RestartVPN, err = r.BoolPtr("HEALTH_RESTART_VPN")
 	if err != nil {
 		return err
+	}
+	startupTimeout, err := r.DurationPtr("HEALTH_STARTUP_TIMEOUT")
+	if err != nil {
+		return err
+	}
+	if startupTimeout != nil {
+		h.StartupTimeout = *startupTimeout
 	}
 	return nil
 }

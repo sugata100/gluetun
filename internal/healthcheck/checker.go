@@ -15,14 +15,15 @@ import (
 )
 
 type Checker struct {
-	tlsDialAddrs   []string
-	dialer         *net.Dialer
-	echoer         *icmp.Echoer
-	dnsClient      *dns.Client
-	logger         Logger
-	icmpTargetIPs  []netip.Addr
-	smallCheckType string
-	startupOnFail  bool
+	tlsDialAddrs    []string
+	dialer          *net.Dialer
+	echoer          *icmp.Echoer
+	dnsClient       *dns.Client
+	logger          Logger
+	icmpTargetIPs   []netip.Addr
+	smallCheckType  string
+	startupOnFail   bool
+	startupTimeout  time.Duration
 
 	icmpNotPermitted *bool
 
@@ -48,15 +49,20 @@ func NewChecker(logger Logger) *Checker {
 // - TCP+TLS dial addresses
 // - ICMP echo IP addresses to target
 // - the desired small check type (dns or icmp)
-// - whether to startup the periodic checks if the startup check fails.
+// - whether to startup the periodic checks if the startup check fails
+// - the timeout for the initial startup TCP+TLS check.
 // This function MUST be called before calling [Checker.Start].
 func (c *Checker) SetConfig(tlsDialAddrs []string, icmpTargets []netip.Addr,
-	smallCheckType string, startupOnFail bool,
+	smallCheckType string, startupOnFail bool, startupTimeout time.Duration,
 ) {
 	c.tlsDialAddrs = tlsDialAddrs
 	c.icmpTargetIPs = icmpTargets
 	c.smallCheckType = smallCheckType
 	c.startupOnFail = startupOnFail
+	if startupTimeout <= 0 {
+		startupTimeout = 15 * time.Second
+	}
+	c.startupTimeout = startupTimeout
 }
 
 // Start starts the [Checker] which behaves differently according to its
@@ -293,12 +299,14 @@ func withRetries(ctx context.Context, tryTimeouts []time.Duration,
 }
 
 func (c *Checker) startupCheck(ctx context.Context) error {
-	// Increased from 6s to 15s to reduce false-positive restart loops on slower
-	// VPN handshakes / DNS readiness (see https://github.com/passteque/gluetun/issues/2154).
-	// The addresses to dial may be multiple; we run the check in parallel.
-	// If any succeeds, the check passes. This prevents false negatives at startup
-	// if one of the addresses is temporarily unreachable.
-	const timeout = 15 * time.Second
+	// Timeout is configurable via HEALTH_STARTUP_TIMEOUT (default 15s).
+	// Raised from the historical 6s hard-code to reduce false-positive restart
+	// loops on slower VPN handshakes / DNS readiness (see #2154).
+	// Addresses are dialed in parallel; any success passes the check.
+	timeout := c.startupTimeout
+	if timeout <= 0 {
+		timeout = 15 * time.Second
+	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	errCh := make(chan error)
