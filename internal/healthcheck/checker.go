@@ -15,14 +15,15 @@ import (
 )
 
 type Checker struct {
-	tlsDialAddrs   []string
-	dialer         *net.Dialer
-	echoer         *icmp.Echoer
-	dnsClient      *dns.Client
-	logger         Logger
-	icmpTargetIPs  []netip.Addr
-	smallCheckType string
-	startupOnFail  bool
+	tlsDialAddrs    []string
+	dialer          *net.Dialer
+	echoer          *icmp.Echoer
+	dnsClient       *dns.Client
+	logger          Logger
+	icmpTargetIPs   []netip.Addr
+	smallCheckType  string
+	startupOnFail   bool
+	startupTimeout  time.Duration
 
 	icmpNotPermitted *bool
 
@@ -48,28 +49,33 @@ func NewChecker(logger Logger) *Checker {
 // - TCP+TLS dial addresses
 // - ICMP echo IP addresses to target
 // - the desired small check type (dns or icmp)
-// - whether to startup the periodic checks if the startup check fails.
+// - whether to startup the periodic checks if the startup check fails
+// - the timeout for the initial startup TCP+TLS check.
 // This function MUST be called before calling [Checker.Start].
 func (c *Checker) SetConfig(tlsDialAddrs []string, icmpTargets []netip.Addr,
-	smallCheckType string, startupOnFail bool,
+	smallCheckType string, startupOnFail bool, startupTimeout time.Duration,
 ) {
 	c.tlsDialAddrs = tlsDialAddrs
 	c.icmpTargetIPs = icmpTargets
 	c.smallCheckType = smallCheckType
 	c.startupOnFail = startupOnFail
+	if startupTimeout <= 0 {
+		startupTimeout = 15 * time.Second
+	}
+	c.startupTimeout = startupTimeout
 }
 
 // Start starts the [Checker] which behaves differently according to its
 // internal field startupOnFail, which is set by calling [Checker.SetConfig].
 //
 // By default, startupOnFail should be false and the behavior is as follows:
-// A blocking 6s-timed TCP+TLS check is performed first. If it fails,
+// A blocking timed TCP+TLS check is performed first. If it fails,
 // an error is returned and the [Checker] is not started.
 // On success, it starts the periodic checks in a separate goroutine, returning
 // the runError error channel and a nil error.
 //
 // If startupOnFail is true, the behavior is as follows:
-// A blocking 6s-timed TCP+TLS check is performed first. If it fails,
+// A blocking timed TCP+TLS check is performed first. If it fails,
 // the error is sent to the runError channel, but no error is returned
 // and the [Checker] continues to start the periodic checks in a separate goroutine, returning
 // the runError error channel and a nil error.
@@ -293,13 +299,14 @@ func withRetries(ctx context.Context, tryTimeouts []time.Duration,
 }
 
 func (c *Checker) startupCheck(ctx context.Context) error {
-	// connection isn't under load yet when the checker starts, so a short
-	// 6 seconds timeout suffices and provides quick enough feedback that
-	// the new connection is not working. However, since the addresses to dial
-	// may be multiple, we run the check in parallel. If any succeeds, the check passes.
-	// This is to prevent false negatives at startup, if one of the addresses is down
-	// for external reasons.
-	const timeout = 6 * time.Second
+	// Timeout is configurable via HEALTH_STARTUP_TIMEOUT (default 15s).
+	// Raised from the historical 6s hard-code to reduce false-positive restart
+	// loops on slower VPN handshakes / DNS readiness (see #2154).
+	// Addresses are dialed in parallel; any success passes the check.
+	timeout := c.startupTimeout
+	if timeout <= 0 {
+		timeout = 15 * time.Second
+	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	errCh := make(chan error)
@@ -334,7 +341,7 @@ func (c *Checker) startupCheck(ctx context.Context) error {
 	for i, err := range errs {
 		errStrings[i] = fmt.Sprintf("parallel attempt %d/%d failed: %s", i+1, len(errs), err)
 	}
-	return fmt.Errorf("all check tries failed: %s", strings.Join(errStrings, ", "))
+	return fmt.Errorf("all check tries failed: %s (see https://github.com/qdm12/gluetun-wiki/blob/main/faq/healthcheck.md)", strings.Join(errStrings, ", "))
 }
 
 const (

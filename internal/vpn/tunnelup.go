@@ -87,7 +87,8 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 		icmpTargetIPs = []netip.Addr{data.serverIP}
 	}
 	l.healthChecker.SetConfig(l.healthSettings.TargetAddresses, icmpTargetIPs,
-		l.healthSettings.SmallCheckType, !*l.healthSettings.RestartVPN)
+		l.healthSettings.SmallCheckType, !*l.healthSettings.RestartVPN,
+		l.healthSettings.StartupTimeout)
 
 	healthErrCh, err := l.healthChecker.Start(ctx)
 	l.healthServer.SetError(err)
