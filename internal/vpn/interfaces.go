@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/netip"
 	"os/exec"
+	"time"
 
 	"github.com/qdm12/gluetun/internal/command"
 	"github.com/qdm12/gluetun/internal/configuration/settings"
@@ -109,7 +110,7 @@ type Cmder interface {
 
 type HealthChecker interface {
 	SetConfig(tlsDialAddrs []string, icmpTargetIPs []netip.Addr,
-		smallCheckType string, startupOnFail bool)
+		smallCheckType string, startupOnFail bool, startupTimeout time.Duration)
 	Start(ctx context.Context) (runError <-chan error, err error)
 	Stop() error
 }

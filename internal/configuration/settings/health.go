@@ -13,6 +13,11 @@ import (
 	"github.com/qdm12/gotree"
 )
 
+// defaultHealthStartupTimeout is the default duration for the initial
+// TCP+TLS healthcheck after the VPN tunnel comes up. Raised from the
+// historical 6s to reduce false-positive restart loops (see #2154).
+const defaultHealthStartupTimeout = 15 * time.Second
+
 // Health contains settings for the healthcheck and health server.
 type Health struct {
 	// ServerAddress is the listening address
@@ -107,7 +112,7 @@ func (h *Health) SetDefaults() {
 	h.RestartVPN = gosettings.DefaultPointer(h.RestartVPN, true)
 	// Default raised from historical 6s to 15s to reduce false restart loops
 	// on slower VPN providers (see https://github.com/passteque/gluetun/issues/2154).
-	h.StartupTimeout = gosettings.DefaultComparable(h.StartupTimeout, 15*time.Second)
+	h.StartupTimeout = gosettings.DefaultComparable(h.StartupTimeout, defaultHealthStartupTimeout)
 }
 
 func (h Health) String() string {
