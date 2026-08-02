@@ -20,15 +20,15 @@ import (
 const defaultStartupTimeout = 15 * time.Second
 
 type Checker struct {
-	tlsDialAddrs    []string
-	dialer          *net.Dialer
-	echoer          *icmp.Echoer
-	dnsClient       *dns.Client
-	logger          Logger
-	icmpTargetIPs   []netip.Addr
-	smallCheckType  string
-	startupOnFail   bool
-	startupTimeout  time.Duration
+	tlsDialAddrs   []string
+	dialer         *net.Dialer
+	echoer         *icmp.Echoer
+	dnsClient      *dns.Client
+	logger         Logger
+	icmpTargetIPs  []netip.Addr
+	smallCheckType string
+	startupOnFail  bool
+	startupTimeout time.Duration
 
 	icmpNotPermitted *bool
 
